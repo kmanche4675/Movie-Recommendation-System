@@ -14,7 +14,8 @@ This project builds a movie recommendation system using Machine Learning & Data 
 ### Clone the Repo
 
 ```bash
-
+git clone https://github.com/kmanche4675/Movie-Recommendation-System.git
+cd Movie-Recommendation-System
 ```
 
 ## Downloading the Dataset

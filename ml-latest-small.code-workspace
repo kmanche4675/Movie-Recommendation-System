@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "ml-latest-small",
+			"path": "../../ml-latest-small"
+		},
+		{
+			"name": "Movie-Recommendation-System",
+			"path": "."
+		}
+	],
+	"settings": {}
+}

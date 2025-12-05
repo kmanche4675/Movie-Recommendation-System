@@ -25,3 +25,33 @@ To download and extract the MovieLens dataset (ml-latest-small), run:
 ```bash
 python src/download_movielens.py
 ```
+## Run the SVD tuner
+
+Optuna tuner currently set to 120 cycles. This takes a while. reduce in code for faster run. This should create a models folder to save model and best parameters. To run the tuner run:
+
+```bash
+python src/cult_recommender_tuner.py
+```
+
+# Produce genre balanced list of movies to select from
+
+genre_balanced_selctor.py currently produces 75 movies balanced by genre as genres are represented in the top 200 movies. If you want more or less to choose from, this is the file to edit. To produce initial selection list, run:
+```bash
+python src/genre_balanced_selector.py
+```
+
+# get movie posters
+
+To get the movie posters for the 75 selected from genre balaced selection and the rest of the MovieLens database, run:
+```bash
+python src/get_the_proper_posters.py
+```
+
+# launch the streamlit application
+
+Launch the streamlit application from the root directory. To launch run:
+```bash
+streamlit run src/streamlit_cult_classic_recommender.py
+```
+
+Select some movies you like. The recommender will treat your movies as 5 star ratings. Choose from pure classic collaborative, content, hybrid, and cult classic filtering. Enjoy!

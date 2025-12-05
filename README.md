@@ -3,11 +3,10 @@ This project builds a movie recommendation system using Machine Learning & Data 
 
 ## Features
 
-- 
-- 
-- 
-- 
-- 
+- User chooses movies that they have previously enjoyed
+- Movie recommendation system uses content-based filtering, collaborative-based filtering, or a content-collaborative hybrid-based filtering to recommend movies that the user might have seen
+- User rates the recommended movies on a scale of 1-5 to finetune the model
+- Model generates movies that the user might want to see
 
 # Getting Started
 
@@ -18,14 +17,14 @@ git clone https://github.com/kmanche4675/Movie-Recommendation-System.git
 cd Movie-Recommendation-System
 ```
 
-## Downloading the Dataset
+### Downloading the Dataset
 
 To download and extract the MovieLens dataset (ml-latest-small), run:
 
 ```bash
 python src/download_movielens.py
 ```
-## Run the SVD tuner
+### Run the SVD tuner
 
 Optuna tuner currently set to 120 cycles. This takes a while. reduce in code for faster run. This should create a models folder to save model and best parameters. To run the tuner run:
 
@@ -33,21 +32,21 @@ Optuna tuner currently set to 120 cycles. This takes a while. reduce in code for
 python src/cult_recommender_tuner.py
 ```
 
-# Produce genre balanced list of movies to select from
+### Produce genre balanced list of movies
 
 genre_balanced_selctor.py currently produces 75 movies balanced by genre as genres are represented in the top 200 movies. If you want more or less to choose from, this is the file to edit. To produce initial selection list, run:
 ```bash
 python src/genre_balanced_selector.py
 ```
 
-# get movie posters
+### Get movie posters
 
 To get the movie posters for the 75 selected from genre balaced selection and the rest of the MovieLens database, run:
 ```bash
 python src/get_the_proper_posters.py
 ```
 
-# launch the streamlit application
+### Launch the streamlit application
 
 Launch the streamlit application from the root directory. To launch run:
 ```bash

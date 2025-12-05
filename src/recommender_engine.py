@@ -12,7 +12,7 @@ from data_loader import load_movielens_data
 from cult_classic_recommender import *
 from genre_balanced_selector import balanced_movies_df
 
-data = load_movielens_data("ml-latest-small")
+data = load_movielens_data(Path(__file__).parent.parent / "data" / "ml-latest-small")
 ratings_df = data["ratings"]
 movies_df = data["movies"]
 links_df = data["links"]
@@ -27,7 +27,7 @@ classic_algo = None
 
 def ensure_classic_model():
 	global classic_algo
-	path = Path("models/classic_svd.pkl")
+	path = Path(__file__).resolve().parent.parent / "models" / "classic_svd_best.pkl"
 	if path.exists():
 		classic_algo = joblib.load(path)
 		print("Classic model loaded")
@@ -65,12 +65,12 @@ def classic_recommend(seeds: list[int], top_n: int=20):
 	seed_vectors =[]
 	for mid in seeds:
 		try:
-			st.write(f"Trying seed movieId: {mid}")
+			#st.write(f"Trying seed movieId: {mid}")
 			iid = classic_algo.trainset.to_inner_iid(mid)
-			st.write(f" matched to inner iid: {iid}")
+			#st.write(f" matched to inner iid: {iid}")
 			seed_vectors.append(classic_algo.qi[iid])
 		except ValueError:
-			st.write(f"seed {mid} not in trainset")
+			#st.write(f"seed {mid} not in trainset")
 			continue
 	if not seed_vectors:
 		print("No seed movies found in training set using global average item vector")
@@ -104,23 +104,23 @@ def classic_recommend(seeds: list[int], top_n: int=20):
 #
 def cult_recommend(seeds: list[int], top_n: int = 20):
 	"""Cult Classic recommender: Collaborative with obscurity bias"""
-	from cult_classic_recommender import algo, trainset
-	temp_user = 999999
-	df = pd.DataFrame([(temp_user, mid, 5.0) for mid in seeds],
-					  columns=["userId", "movieId", "rating"])
-	recs = recommend_cult_classics(algo, trainset, temp_user, top_n=top_n + len(seeds))
+	from cult_classic_recommender import build_dummy_user_model, recommend_cult_classics
+	algo, trainset = build_dummy_user_model(seeds)
+	
+	recs = recommend_cult_classics(algo, trainset, user_id=999999, top_n=top_n +len(seeds))
 	recs = recs[~recs["movieId"].isin(seeds)]
+	
+	recs = recs.merge(item_stats[["movieId", "tmdbId"]], on="movieId", how="left")
 	result = []
 	for _, row in recs.head(top_n).iterrows():
 		result.append({
 			"movieId": int(row["movieId"]),
 			"title": row["title"],
-			"score": float(row["final_score"])
+			"score": float(row["final_score"]), 
+			"tmdbId": int(row["tmdbId"]) if not pd.isna(row["tmdbId"]) else None
 		})
 	return result
 
-
-#
 # Content-Based (TF_IDF on genres + tags)
 #
 
@@ -141,6 +141,7 @@ def hybrid_recommend(seeds: list[int], top_n: int =  20):
 
 engine ={
 	"classic": classic_recommend,
+	"classic_collaboration": classic_recommend,
 	"cult": cult_recommend, 
 	"content": content_recommend,
 	"hybrid": hybrid_recommend,
@@ -148,7 +149,7 @@ engine ={
 def predict(predictor_name: str, seed_movie_ids: list[int], top_n: int = 20):
 	func = engine.get(predictor_name)
 	if func is None:
-		raise ValueError(f"Unkonw predictor: {predictor_name}")
+		raise ValueError(f"Unknonw predictor: {predictor_name}")
 	return func(seed_movie_ids, top_n=top_n)
 	
 
@@ -161,4 +162,3 @@ if __name__ == "__main__":
 		print(f"{r['title']:50} | score: {r['score']:.4f}")
 	print("=== Test Done ===")
 	
-		

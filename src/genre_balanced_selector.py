@@ -13,6 +13,10 @@ load_dotenv()
 
 tmdb.API_KEY= os.getenv("TMDB_API_KEY")
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+CACHE_FILE = PROJECT_ROOT / "data" / "balanced_movies_cache.pkl"
+CSV_OUTPUT = PROJECT_ROOT / "balanced_movies.csv"
+
 TMDB_GENRE_MAP = {
 	28: "Action", 12:"Adventure", 16: "Animation", 35: "Comedy", 80:"Crime", 99:"Documentary", 18: "Drama", 10751: "Family", 14: "Fantasy", 36: "History", 27: "Horror", 10402: "Music", 9648: "Mystery", 10749: "Romance", 878: "Science Fiction", 10770: "TV Movie", 53: "Thriller", 10752: "War", 37: "Western"
 }
@@ -35,7 +39,7 @@ def get_top200_genre_ratios():
 	return ratios
 
 def get_balanced50_movies():
-	data = load_movielens_data("ml-latest-small")
+	data = load_movielens_data("./data/ml-latest-small")
 	movies_df = data["movies"]
 	links_df = data["links"]
 
@@ -43,7 +47,7 @@ def get_balanced50_movies():
 
 	ratios = get_top200_genre_ratios()
 
-	target_n = 200
+	target_n = 75
 	selected_records=[]
 
 	for genre, ratio in ratios.items():
@@ -59,7 +63,7 @@ def get_balanced50_movies():
 		already_ids = selected_df["movieId"].tolist() if len(selected_df) > 0 else []
 		remaining = movies_df[~movies_df["movieId"].isin(already_ids)]
 		needed = target_n - len(selected_df)
-		fillers = remaining.sample(n=needed, random_state = 49)
+		fillers = remaining.sample(n=needed, random_state = 42)
 		selected_df = pd.concat([selected_df, fillers], ignore_index=True)
 
 	selected_df = selected_df.sample(frac=1, random_state=49). head(target_n).copy()
@@ -79,5 +83,7 @@ else:
 	balanced_movies_df = get_balanced50_movies()
 	CACHE_FILE.parent.mkdir(exist_ok=True)
 	balanced_movies_df.to_pickle(CACHE_FILE)
-	print("Balanced movies caached for future runs")
+	print("Balanced movies cached for future runs")
+ 
+balanced_movies_df.to_csv(CSV_OUTPUT, index=False)
 balanced_movies_df=get_balanced50_movies()

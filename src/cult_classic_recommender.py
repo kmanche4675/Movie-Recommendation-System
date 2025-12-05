@@ -11,12 +11,13 @@ from pathlib import Path
 from data_loader import load_movielens_data
 
 # Configuration
-
-ML_RATINGS   = 'ml-latest-small/ratings.csv'    # MovieLens 100k/1m/25M ratings
-ML_LINKS     = 'ml-latest-small/links.csv'      # movieId IMDB to TMDB id mapping
-ML_MOVIES    = 'ml-latest-small/movies.csv'     # title + genres
-TMDB_CACHE_FILE  = 'tmdb_metadata.csv'    # CSV generated from tuner
-BEST_PARAMS_PATH = Path("best_cult_params.json")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
+MODELS_DIR = PROJECT_ROOT / "models"
+TMDB_CACHE_FILE = DATA_DIR / "tmdb_metadata.csv"                 # CSV generated from tuner
+CLASSIC_MODEL_PATH = MODELS_DIR / "classic_svd_best.pkl"     
+CULT_MODEL_PATH = MODELS_DIR / "cult_svd_best.pkl"
+CULT_CONFIG_PATH = MODELS_DIR / "cult_classic_best.json"
 
 TOP_N        = 20                               # How many recs to return
 POPULARITY_CAP = 1000                           # movies with >CAP votes are “mainstream”
@@ -59,7 +60,7 @@ def load_best_params(path:Path):
         
     return DEFAULT_PARAMS.copy()
         
-best_params = load_best_params(BEST_PARAMS_PATH)
+best_params = load_best_params(CULT_CONFIG_PATH)
 
 N_FACTORS =best_params["n_factors"]
 N_EPOCHS = best_params["n_epochs"]
@@ -76,7 +77,7 @@ print(f"Using cult params: obscurity_exp = {OBSCURITY_EXP}, min_votes = {MIN_VOT
 
 print("Loading MovieLens …")
 
-data = load_movielens_data("ml-latest-small")
+data = load_movielens_data(DATA_DIR / "ml-latest-small")
 
 ratings = data['ratings']
 movies = data['movies']
@@ -108,6 +109,10 @@ if HAS_TMDB:
 
     for column in ["vote_average", "vote_count", "popularity"]:
         item_stats[column] = pd.to_numeric(item_stats[column], errors="coerce").fillna(0.0)
+    if "poster_path" not in item_stats.columns:
+        item_stats["poster_path"] = None
+    else:
+        item_stats["poster_path"] = item_stats["poster_path"].fillna(None)
 else:
     item_stats = links.merge(movies[["movieId", "title"]], on="movieId")
     item_stats["vote_average"] = 0.0
@@ -201,19 +206,20 @@ def recommend_cult_classics(algo, trainset, user_id, top_n=TOP_N):
 
     candidates = [
         (
-            int(mid),title, weight) for mid, title, weight in zip(
+            int(mid),title, weight, poster_path) for mid, title, weight, poster_path in zip(
             item_stats["movieId"],
             item_stats["title"],
             item_stats["cult_weight"],
+            item_stats.get("poster_path", [None]*len(item_stats))
         )
         if mid not in seen_movie_ids
     ]
 
     preds = []
-    for movie_id, title, weight in candidates:
+    for movie_id, title, weight, poster_path in candidates:
         raw_pred = algo.predict(uid=user_id, iid=movie_id).est
         final_score = raw_pred *weight
-        preds.append((title, movie_id, raw_pred, weight, final_score))
+        preds.append((title, movie_id, raw_pred, weight, final_score, poster_path))
 
     preds.sort(key=lambda x: x[4], reverse=True)
 
@@ -223,7 +229,8 @@ def recommend_cult_classics(algo, trainset, user_id, top_n=TOP_N):
                             "movieId",
                             "predicted_rating",
                             "cult_weight",
-                            "final_score"]
+                            "final_score",
+                            "posert_path"]
                         )
 # 5. Demo for a random user
 
@@ -237,3 +244,23 @@ if __name__ == '__main__':
     recs = recommend_cult_classics(algo,trainset,sample_user,top_n=15)
     print(recs[['title','predicted_rating','cult_weight','final_score']]
               .to_string(index=False, float_format='%.3f'))
+
+def build_dummy_user_model(seed_movie_ids, n_factors=N_FACTORS, n_epochs=N_EPOCHS, lr_all=LR_ALL, reg_all=REG_ALL):
+    data_dict = load_movielens_data(DATA_DIR / "ml-latest-small")
+    ratings = data_dict['ratings']
+    dummy_uid = 999999
+    
+    extra = pd.DataFrame([
+        [dummy_uid, mid, 5.0] for mid in seed_movie_ids
+    ], columns = ["userId", "movieId", "rating"])
+    
+    df_with_dummy = pd.concat([ratings, extra], ignore_index=True)
+    df_with_dummy = df_with_dummy[["userId", "movieId", "rating"]].astype({"userId": int, "movieId": int, "rating": float})
+    reader = Reader(rating_scale=(0.5, 5.0))
+    data = Dataset.load_from_df(df_with_dummy, reader)
+    trainset = data.build_full_trainset()
+    
+    algo = SVD(n_factors=n_factors, n_epochs=n_epochs, lr_all =lr_all, reg_all =reg_all,random_state=42)
+    algo.fit(trainset)
+    
+    return algo, trainset

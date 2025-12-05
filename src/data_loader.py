@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 
-folder_path = "./ml-latest-small"
+folder_path = "../data/ml-latest-small"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def load_movielens_data(folder_path):

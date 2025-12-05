@@ -5,7 +5,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import pickle
 import numpy as np
 
-# --- STANDARDIZED PATH CONFIGURATION ---
+folder_path = "../data/ml-latest-small"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROCESSED_DATA_PATH = os.path.join(SCRIPT_DIR, "..", "data", "processed")
 MERGED_DATA_FILE = os.path.join(PROCESSED_DATA_PATH, 'merged_data_clean.csv')

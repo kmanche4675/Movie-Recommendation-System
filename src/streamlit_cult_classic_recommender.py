@@ -19,8 +19,9 @@ import tmdbsimple as tmdb
 from genre_balanced_selector import balanced_movies_df
 import json
 from recommender_engine import *
+import traceback
 
-		
+
 load_dotenv()
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 if not TMDB_API_KEY:
@@ -86,7 +87,16 @@ def get_poster(tmdb_id=None, poster_url=None):
 
 	img = _download_image_to_pil(PLACEHOLDER_404)
 	return img if img else Image.new("RGB", (500,750), color=(231, 76, 60))
-			 
+
+if "selected" not in st.session_state:	
+    st.session_state.selected = []
+if "chosen_predictor" not in st.session_state:
+    st.session_state.chosen_predictor = None
+    st.session_state.predictor_label = None
+if "current_recs" not in st.session_state:
+    st.session_state.current_recs = []
+if "ratings_buffer" not in st.session_state:
+    st.session_state.ratings_buffer = {}
 st.set_page_config(page_title="Cult vs Classic Recommender", layout = "wide")
 st.title("Cult Classic Vs Mainstream Reommender")
 st.markdown(" *** Select 10-15 movies you love to get personalized recommendations ***")
@@ -104,7 +114,7 @@ except Exception:
 	tmdb_map = dict()
 
 cols = st.columns(6)
-selected_movie_ids = st.session_state.get("selected",[])
+selected_movie_ids = st.session_state.selected
 
 LINE_HEIGHT_PX = 20
 MAX_TITLE_LINES = 5
@@ -136,10 +146,13 @@ for idx, row in popular.iterrows():
 def call_predictor(name, seeds, top_n=20):
 	try:
 		from recommender_engine import engine
-		recs = engine.predict(name, seeds, top_n=top_n)
+		recs = predict(name, seeds, top_n=top_n)
 		return recs
-	except Exception:
-		if name == "classic_collaboration":
+	except Exception as e:
+		tb = traceback.format_exc()
+		st.error(f"Failed to call predict() -falling back")
+		st.code(tb)
+		if name == "classic":
 			try:
 				from recommender_engine import classic_model
 				df = classic_model.recommend(seeds, top_n=top_n)
@@ -155,117 +168,65 @@ def call_predictor(name, seeds, top_n=20):
 			for _, r in stub.iterrows():
 				out.append({"movieId": int(r["movieId"]), "title": r["title"], "score": 0.0})
 			return out
-		except Exception:
-			return []
-	tmdb_map={}
-	try:
-		if "tmdbId" in popular.columns:
-			tmdb_map = dict(zip(popular["movieId"].astype(int), popular["tmdbId"]))
-	except Exception:
-		tmdb_map ={}
+		except Exception as e2:
+			st.error(f"Fallback classic_model.recommend also failed: {e2}")
+			st.code(traceback.format_exc())
+		stub = popular.head(top_n)
+		out = []
+		for _, r in stub.iterrows():
+			out.append({
+       			"movieID": int(r["movieId"]),
+          		"title": r.get("title", "<no title>"),
+            	"score": 0.0
+             })
+		#st.write("DEBUG out sample:", out[:3])
+		return out
+st.markdown("---")
+if st.button("Submit Ratings and Log Run", width="stretch"):
+	ratings = {}
+	hits = 0
+	k = len(st.session_state.current_recs)
 
-	if chosen_pedictor:
-		with st.spinner(f"Calling {predictor_label}..."):
-			recs = call_predictor(chosen_predictor, selected_movie_ids, top_n=20)
+	for rec in st.session_state.current_recs:
+		mid = int(rec["movieId"])
+		user_rating = st.session_state.ratings_buffer.get(str(mid),3)
+		ratings[mid] = user_rating
+		if user_rating >= 4:
+			hits += 1
+			
+	precision_at_20 = hits / k if k >0 else 0.0
 
-		st.subheader(f"Recommendations - {predictor_label}")
-		if "current_recs" not in st.session_state:
-			st.session_state.current_recs = []
-		if "ratings_buffer" not in st.session_state:
-			st.session_state.ratings_buffer = {}
-
-		norm = []
-		for r in recs[:20]:
-			if isinstance(r, dict):
-				mid = int(r.get("movieId") or r.get("movieId", -1))
-				title = r.get("title","") or r.get("name","")
-				score = float(r.get("score", 0.0) or 0.0)
-			else:
-				mid = int(r.movieId)
-				title = r.title
-				score = float(getattr(r, "final_score", getattr(r, "score", 0.0)))
-			norm.append({"movieId": mid, "title": title, "score": score})
-		st.session_state.current_recs = norm
-
-		cols_per_row= r
-		rows = (len(norm) + cols_per_row - 1) // cols_per_row
-		for row_i in range(rows):
-			cols = st.columns(cols_per_row)
-			for col_j in range(cols_per_row):
-				idx = row_i * cols_per_row +col_j
-				if idx >= len(norm):
-					break
-				rec = norm[idx]
-				mid = int(rec["movieId"])
-				title = rec["title"]
-				score = ["score"]
-
-				with cols[col_j]:
-					tmdb_id = tmdb_map.get(mid)
-					poster = None
-					try: 
-						poster = get_poster(tmdb_id)
-					except Exception:
-						poster = None
-					if poster is not None:
-						st.image(poster, width="stretch")
-					else:
-						st.image(PLACEHOLDER_NO_POSTER, width="stretch")
-
-					st.markdown(f"**{title}**")
-					st.markdown(f"Pred Score: {score:.4f}")
-
-					key = f"rating_{chosen_predictor}_{mid}"
-					initial = st.session_state.ratings_buffer.get(str(mid), 3)
-					val = st.slider("Rate (1-5)", min_value = 1, max_value = 5, value = int(initial), key=key)
-					st.session_state.ratings_buffer[str(mid)] = int(val)
-
-		st.markdown("---")
-		if st.button("Submit Ratings and Log Run", width="stetch"):
-			ratings = {}
-			hits = 0
-			k = len(st.session_state.current_recs)
-
-			for rec in st.session_state.current_recs:
-				mid = int(rec["movieId"])
-				user_rating = st.session_state.ratings_buffer.get(str(mid),3)
-				ratings[mid] = user_rating
-				if user_rating >= 4:
-					hits += 1
-					
-			precision_at_20 = hits / k if k >0 else 0.0
-
-			run = {
-				"timestamp": pd.Timestamp.utcnow().isoformat(),
-				"predictor": chosen_predictor,
-				"seed_movie_ids": selected_movie_ids,
-				"recommendations": [
-					{
-						"movieId": int(r["movieId"]),
-						"title": r["title"],
-						"score": float(r["score"])
-					}
-					for r in st.session_state.current_recs
-				],
-				"user_ratings": ratings,
-				"precision_at_20": precision_at_20,
+	run = {
+		"timestamp": pd.Timestamp.utcnow().isoformat(),
+		"predictor": st.session_state.chosen_predictor,
+		"seed_movie_ids": selected_movie_ids,
+		"recommendations": [
+			{
+				"movieId": int(r["movieId"]),
+				"title": r["title"],
+				"score": float(r["score"])
 			}
+			for r in st.session_state.current_recs
+		],
+		"user_ratings": ratings,
+		"precision_at_20": precision_at_20,
+	}
 
-			logs_path = Path("logs")
-			logs_path.mkdir(exist_ok=True)
-			out_path = logs_path / "prediction_runs.ndjson"
-			try:
-				with open(log_file,"a", encoding="utf-8") as f:
-					f.write(json.dumps(run, ensure_ascii=False) +"\n")
-				st.success(f"Run Logged! presision@20 = {precision_at_20: .3f}")
-			except Exception as e:
-				st.error(f"Failed to write log: {e}")
-			try:
-				df_log = pd.DataFrame(run["recommendations"])
-				df_log["user_rating"] = df_log["movieId"].astype(str).map(ratings).fillna(0).astype(int)
-				st.dataframe(df_log[["movieId", "title", "score", "user_rating"]].head(20), width="stretch",hide_index=True)
-			except Exception:
-				pass
+	logs_path = Path("logs")
+	logs_path.mkdir(exist_ok=True)
+	out_path = logs_path / "prediction_runs.ndjson"
+	try:
+		with open(st.session_state.log_file,"a", encoding="utf-8") as f:
+			f.write(json.dumps(run, ensure_ascii=False) +"\n")
+		st.success(f"Run Logged! presision@20 = {precision_at_20: .3f}")
+	except Exception as e:
+		st.error(f"Failed to write log: {e}")
+	try:
+		df_log = pd.DataFrame(run["recommendations"])
+		df_log["user_rating"] = df_log["movieId"].astype(str).map(ratings).fillna(0).astype(int)
+		st.dataframe(df_log[["movieId", "title", "score", "user_rating"]].head(20), width="stretch",hide_index=True)
+	except Exception:
+		pass
 				
 st.markdown("---")
 st.markdown("### Chose a Recommender###")
@@ -279,64 +240,63 @@ if "chosen_predictor" not in st.session_state:
 	st.session_state.predictor_label = None
 
 with c1:
-	if c1.button("Classic Collaborative", width="stretch", key="btn_classic"):
+	if c1.button("Classic Collaborative", type="primary", width="stretch", key="btn_classic"):
 		st.session_state.chosen_predictor = "classic"
 		st.session_state.predictor_label = "Classic Collaborative"
 with c2:
-	if c2.button("Content-Based", width="stretch",key="btn_content"):
+	if c2.button("Content-Based", type="primary", width="stretch",key="btn_content"):
 		st.session_state.chosen_predictor = "content"
 		st.session_state.predictor_label = "Content-Based"
 with c3:
-	if c3.button("Hybrid", width="stretch",key="btn_hybrid"):
+	if c3.button("Hybrid", type="primary", width="stretch",key="btn_hybrid"):
 		st.session_state.chosen_predictor = "hybrid"
 		st.session_state.predictor_label = "Hybrid"
 with c4:
-	if c4.button("Cult Classic", width="stretch",key="btn_cult"):
+	if c4.button("Cult Classic", type="primary", width="stretch",key="btn_cult"):
 		st.session_state.chosen_predictor = "cult"
 		st.session_state.predictor_label = "Cult Classic"
 
 #trigger reommendations when a predictor is chosen
 if st.session_state.chosen_predictor and selected_movie_ids:
-	predictor = st.session_state.chosen_predictor
-	label = st.session_state.predictor_label
+    predictor = st.session_state.chosen_predictor
+    label = st.session_state.predictor_label
+    
+    #st.write(f"DEBUG: Running predictor **{predictor}**")
+    #st.write(f"DEBUG: Seeds {selected_movie_ids}")
+    with st.spinner(f"Generating {st.session_state.predictor_label} recommendations..."):
+        recs = call_predictor(st.session_state.chosen_predictor, selected_movie_ids, top_n=20)
+        
+    #st.write(f"DEBUG: got {len(recs)} recommendations")
+    #st.write(f"DEBUG: First rec {recs[0] if recs else 'NONE'}")
+    st.subheader(f"Recommendations - {st.session_state.predictor_label}")
+    st.session_state.current_recs = []
+    st.session_state.ratings_buffer = {}
 
-	st.write(f"DEBUG: Running predictor **{predictor}**")
-	st.write(f"DEBUG: Seeds {selected_movie_ids}")
+    normalized_recs = []
+    for item in recs:
+        mid = int(item["movieId"])
+        title = item["title"]
+        score = float(item["score"])
+        normalized_recs.append({"movieId": mid, "title": title, "score": score})
+
+    st.session_state.current_recs = normalized_recs
 	
-	with st.spinner(f"Generating {st.session_state.predictor_label} recommendations..."):
-		recs = call_predictor(st.session_state.chosen_predictor, selected_movie_ids, top_n=20)
+    cols_per_row = 5
+    for i in range(0, len(normalized_recs), cols_per_row):
+        cols = st.columns(cols_per_row)
+        for idx, rec in enumerate(normalized_recs[i:i+cols_per_row]):
+            with cols[idx]:
+                mid = rec["movieId"]
+                tmdb_id = tmdb_map.get(mid)
+                poster = get_poster(tmdb_id=tmdb_id) if tmdb_id else get_poster(poster_url=PLACEHOLDER_NO_POSTER)
+                st.image(poster, width="stretch")
+                st.markdown(f"**{rec['title']}**")
+                st.markdown(f"Score: {rec['score']:.4f}")
 
-	st.write(f"DEBUG: got {len(recs)} recommendations")
-	st.write(f"DEBUG: First rec {recs[0] if recs else 'NONE'}")
-	st.subheader(f"Recommendations - {st.session_state.predictor_label}")
-	st.session_state.current_recs = []
-	st.session_state.ratings_buffer = {}
-
-	normalized_recs = []
-	for item in recs:
-		mid = int(item["movieId"])
-		title = item["title"]
-		score = float(item["score"])
-		normalized_recs.append({"movieId": mid, "title": title, "score": score})
-
-	st.session_state.current_recs = normalized_recs
-	
-	cols_per_row = 5
-	for i in range(0, len(normalized_recs), cols_per_row):
-		cols = st.columns(cols_per_row)
-		for idx, rec in enumerate(normalized_recs[i:i+cols_per_row]):
-			with cols[idx]:
-				mid = rec["movieId"]
-				tmdb_id = tmdb_map.get(mid)
-				poster = get_poster(tmdb_id=tmdb_id) if tmdb_id else get_poster(poster_url=PLACEHOLDER_NO_POSTER)
-				st.image(poster, width="stretch")
-				st.markdown(f"**{rec['title']}**")
-				st.markdown(f"Score: {rec['score']:.4f}")
-
-				rating_key = f"rating_{st.session_state.chosen_predictor}_{mid}"
-				initial = st.session_state.ratings_buffer.get(str(mid), 3)
-				val = st.slider("Rate",1,5, initial, key=rating_key)
-				st.session_state.ratings_buffer[str(mid)] = val
+                rating_key = f"rating_{st.session_state.chosen_predictor}_{mid}"
+                initial = st.session_state.ratings_buffer.get(str(mid), 3)
+                val = st.slider("Rate",1,5, initial, key=rating_key)
+                st.session_state.ratings_buffer[str(mid)] = val
 
 
 	

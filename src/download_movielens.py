@@ -1,10 +1,12 @@
 import os
 import zipfile
 import requests
+from pathlib import Path
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(SCRIPT_DIR, "..", "data")
-ZIP_PATH = os.path.join(DATA_DIR, "ml-latest-small.zip")
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+DATA_DIR = PROJECT_ROOT / "data"
+ZIP_PATH = DATA_DIR / "ml-latest-small.zip"
 
 MOVIELENS_URL = "https://files.grouplens.org/datasets/movielens/ml-latest-small.zip"
 
@@ -24,7 +26,7 @@ def download_dataset():
         print("Dataset already downloaded.")
 
 def extract_dataset():
-    extract_path = os.path.join(DATA_DIR, "ml-latest-small")
+    extract_path = DATA_DIR / "ml-latest-small"
     if not os.path.exists(extract_path):
         print("Extracting dataset...")
         with zipfile.ZipFile(ZIP_PATH, 'r') as zip_ref:

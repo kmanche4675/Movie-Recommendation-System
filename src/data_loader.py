@@ -11,33 +11,19 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def load_movielens_data(folder_path):
-
     script_dir = os.path.dirname(os.path.abspath(__file__))
-
     data_dir = os.path.join(script_dir, "..", "data", folder_path)
-
     data_dir = os.path.abspath(data_dir)
 
-
-
     if not os.path.exists(data_dir):
-
         raise FileNotFoundError(f"MovieLens dataset folder not found: {data_dir}")
-
     
-
     dataframes = {}
-
     for filename in os.listdir(data_dir):
-
         if filename.endswith(".csv"):
-
             key = filename.replace('.csv', '')
-
             file_path = os.path.join(data_dir, filename)
-
             dataframes[key] = pd.read_csv(file_path)
-
     return dataframes
 
 def merge_data(dataframes):
@@ -54,32 +40,23 @@ def merge_data(dataframes):
     tags_df = dataframes.get('tags')
     links_df = dataframes.get('links')
 
-    # Merge ratings with movie metadata
     df_merged = pd.merge(ratings_df, movies_df, on='movieId', how='left')
     
-    # 1. Aggregate and Merge Tags (Crucial for Content-Based Features)
     if tags_df is not None:
-        # Aggregate all tags for a movie into one text string
         tag_agg = tags_df.groupby('movieId')['tag'].apply(lambda x: ' '.join(x.astype(str))).reset_index()
         df_merged = pd.merge(df_merged, tag_agg, on='movieId', how='left')
         df_merged['tag'] = df_merged['tag'].fillna('')
     else:
         df_merged['tag'] = ''
 
-    # 2. Add Links/IDs (Crucial for Hybrid/Cult Model TMDB lookup)
     if links_df is not None:
-         # Merge the links DataFrame with the merged data
          df_merged = pd.merge(df_merged, links_df, on='movieId', how='left')
 
-    # Return the fully merged dataframe and the original component dataframes
     return df_merged, ratings_df, movies_df, links_df, links_df
 
 def print_dataset_summary(dataframes):
-
     for key, df in dataframes.items():
-
         print(f"{key}: {df.shape[0]} rows, {df.shape[1]} columns")
-
         print(df.head())
 
 
@@ -102,21 +79,16 @@ if __name__ == "__main__":
         exit()
     
     # --- STEP 3: Save ALL Cleaned Files (INCLUDING THE NEW MERGED FILE) ---
-
-   
     ratings = data["ratings"]
     ratings.to_csv(os.path.join(PROCESSED_DATA_PATH, "ratings_clean.csv"), index=False)
     print("Saved ratings_clean.csv (For CF/SVD Model)")
 
-   
     merged_df.to_csv(os.path.join(PROCESSED_DATA_PATH, "merged_data_clean.csv"), index=False)
     print("Saved merged_data_clean.csv (For CBF/Hybrid Features)")
 
- 
     movies = data["movies"]
     movies.to_csv(os.path.join(PROCESSED_DATA_PATH, "movies_clean.csv"), index=False)
     
-   
     if links_df is not None:
         links_df.to_csv(os.path.join(PROCESSED_DATA_PATH, "links_clean.csv"), index=False)
         

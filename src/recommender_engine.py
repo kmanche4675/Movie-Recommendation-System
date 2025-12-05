@@ -5,6 +5,8 @@ import numpy as np
 from surprise import SVD, Dataset, Reader
 from surprise.model_selection import train_test_split
 from pathlib import Path
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 import joblib
 import pickle
 
@@ -132,11 +134,81 @@ def content_recommend(seeds:list[int], top_n: int = 20):
 #
 # Hybrid
 #
+movies_hybrid = movies_df.copy()
 
-# i recommend setting up a temp_user like mine
-# result =[] of top 20 recommendations from your predictor
+if tags_df is not None:
+	tags_df = tags_df.groupby("movieId")["tag"].apply(lambda x: " ".join(x)).reset_index()
+	movies_hybrid = movies_hybrid.merge(tags_df, on="movieId", how="left")
+	movies_hybrid["tag"] = movies_hybrid["tag"].fillna("")
+else:
+	movies_hybrid["tag"] = ""
+
+movies_hybrid['features'] = movies_hybrid['genres'].fillna('') + ' ' + movies_hybrid['tag'].str.strip()
+id_to_row = {int(row.movieId): idx for idx, row in movies_hybrid[["movieId"]].iterrows()}
+
+tfidf = TfidfVectorizer(stop_words='english')
+tfidf_matrix = tfidf.fit_transform(movies_hybrid['features'])
+
+# Collaborative Filtering Pre-processing
+user_item = ratings_df.pivot_table(index="userId", columns="movieId", values="rating")
+user_item_centered = user_item.sub(user_item.mean(axis=1), axis=0).fillna(0)
+item_vectors = user_item_centered.values.T
+collab_sim = cosine_similarity(item_vectors, item_vectors)
+movie_ids = user_item_centered.columns.to_numpy()
+movieId_to_collab_idx = {int(mid): i for i, mid in enumerate(movie_ids)}
 
 def hybrid_recommend(seeds: list[int], top_n: int =  20):
+	if not seeds:
+		raise ValueError("No seed movies provided.")
+	
+	alpha = 0.6
+
+	# Content-based profile
+	seed_idxs = []
+	for mid in seeds:
+		matches = movies_hybrid.index[movies_hybrid["movieId"] == mid].tolist()
+		if matches:
+			seed_idxs.append(matches[0])
+	if not seed_idxs:
+		raise ValueError("No matching seed movies found in content profile.")
+	
+	content_user_vector = tfidf_matrix[seed_idxs].mean(axis=0)
+	content_scores = cosine_similarity(content_user_vector, tfidf_matrix).ravel()
+
+	# Collaborative profile
+	collab_idxs = [movieId_to_collab_idx[mid] for mid in seeds if mid in movieId_to_collab_idx]
+	if collab_idxs:
+		collab_user_vector = collab_sim[collab_idxs].mean(axis=0)
+		collab_scores = pd.Series(0.0, index=movies_hybrid.index)
+		for i in range(len(movie_ids)):
+			mid = int(movie_ids[i])
+			row_idx = id_to_row.get(mid)
+			if row_idx is not None:
+				collab_scores.iloc[row_idx] = float(collab_user_vector[i])
+		collab_scores = collab_scores.to_numpy()
+	else:
+		collab_scores = 0.0 * content_scores
+
+	# Combine scores
+	hybrid_scores = alpha * content_scores + (1 - alpha) * collab_scores
+
+	exclude_ids = set(seeds)
+	candidates = pd.DataFrame({
+		"movieId": movies_hybrid["movieId"],
+		"title": movies_hybrid["title"],
+		"genre": movies_hybrid["genres"],
+		"score": hybrid_scores
+	})
+	candidates = candidates[~candidates["movieId"].isin(exclude_ids)]
+	candidates = candidates.sort_values(by="score", ascending=False).head(top_n)
+
+	result = []
+	for _, row in candidates.iterrows():
+		result.append({
+			"movieId": int(row["movieId"]),
+			"title": row["title"],
+			"score": round(float(row["score"]), 4)
+		})
 	return result
 
 engine ={

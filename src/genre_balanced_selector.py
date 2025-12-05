@@ -39,7 +39,7 @@ def get_top200_genre_ratios():
 	return ratios
 
 def get_balanced50_movies():
-	data = load_movielens_data("./data/ml-latest-small")
+	data = load_movielens_data("ml-latest-small")
 	movies_df = data["movies"]
 	links_df = data["links"]
 

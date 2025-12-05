@@ -5,15 +5,19 @@ folder_path = "./ml-latest-small"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def load_movielens_data(folder_path):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(script_dir, "..", "data", folder_path)
+    data_dir = os.path.abspath(data_dir)
+
+    if not os.path.exists(data_dir):
+        raise FileNotFoundError(f"MovieLens dataset folder not found: {data_dir}")
+    
     dataframes = {}
-    for filename in os.listdir(folder_path):
-        if filename.endswith('.csv'):
+    for filename in os.listdir(data_dir):
+        if filename.endswith(".csv"):
             key = filename.replace('.csv', '')
-            file_path = os.path.join(folder_path, filename)
-            try:
-                dataframes[key] = pd.read_csv(file_path)
-            except Exception as e:
-                print(f"Error reading {file_path}: {e}")
+            file_path = os.path.join(data_dir, filename)
+            dataframes[key] = pd.read_csv(file_path)
     return dataframes
 
 def print_dataset_summary(dataframes):

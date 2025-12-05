@@ -13,6 +13,12 @@ import pickle
 from data_loader import load_movielens_data
 from cult_classic_recommender import *
 from genre_balanced_selector import balanced_movies_df
+from content_based import(
+    get_unique_movie_data,
+    build_and_save_cbf_model,
+    load_cbf_artifacts,
+    get_cbf_recommendations,
+)
 
 data = load_movielens_data(Path(__file__).parent.parent / "data" / "ml-latest-small")
 ratings_df = data["ratings"]
@@ -128,9 +134,22 @@ def cult_recommend(seeds: list[int], top_n: int = 20):
 
 # i recommend setting up a temp_user like mine
 # result =[] of top 20 recommendations from your predictor
-
+def ensure_cbf_model():
+    cosine_sim, indicies, movies_df = load_cbf_artifacts()
+    if cosine_sim is not None and movies_df is not None:
+        return
+    movies_df_unique = get_unique_movie_data()
+    if movies_df_unique is None:
+        raise RuntimeError(
+			"Content-based model cannot be built. "
+			"MERGED_DATA_FILE is missing. Run data_loader first."
+		)
+    build_and_save_cbf_model(movies_df_unique)
+    
 def content_recommend(seeds:list[int], top_n: int = 20):
-	return result
+    ensure_cbf_model()
+    recs = get_cbf_recommendations(seeds, top_n=top_n)
+    return recs
 #
 # Hybrid
 #
@@ -173,6 +192,7 @@ def hybrid_recommend(seeds: list[int], top_n: int =  20):
 		raise ValueError("No matching seed movies found in content profile.")
 	
 	content_user_vector = tfidf_matrix[seed_idxs].mean(axis=0)
+	content_user_vector = np.asarray(content_user_vector).reshape(1,-1)
 	content_scores = cosine_similarity(content_user_vector, tfidf_matrix).ravel()
 
 	# Collaborative profile

@@ -36,6 +36,7 @@ POSTER_FOLDER.mkdir(exist_ok=True)
 PLACEHOLDER_NO_POSTER = "https://placehold.co/500x750/cccccc/666666/png?text=No+Poster"
 PLACEHOLDER_404 = "https://placehold.co/500x750/E74C3C/FFFFFF/png?text=404"
 
+
 def _download_image_to_pil(url, save_to:Path |None = None, timeout=6):
 	
 	try:
@@ -97,13 +98,18 @@ if "current_recs" not in st.session_state:
     st.session_state.current_recs = []
 if "ratings_buffer" not in st.session_state:
     st.session_state.ratings_buffer = {}
+if "log_file" not in st.session_state:
+    logs_path = Path(__file__).parent.parent / "logs"
+    logs_path.mkdir(exist_ok=True, parents=True)
+    st.session_state.log_file = logs_path / "prediction_runs.ndjson"
+
 st.set_page_config(page_title="Cult vs Classic Recommender", layout = "wide")
 st.title("Cult Classic Vs Mainstream Reommender")
 st.markdown(" *** Select 10-15 movies you love to get personalized recommendations ***")
 st.info("""
-**Selction Grid**: 50 Movies with genres weighted to match distribution of top 200
+**Selction Grid**: 75 Movies with genres weighted to match distribution of top 200
 """)
-				 	 
+		 	 
 popular = balanced_movies_df.copy()
 try:
 	if "tmdbId" in popular.columns:
